@@ -3,16 +3,17 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { findLast } from 'vs/base/common/arrays';
-import * as strings from 'vs/base/common/strings';
-import { CursorColumns } from 'vs/editor/common/core/cursorColumns';
-import { IPosition, Position } from 'vs/editor/common/core/position';
-import { Range } from 'vs/editor/common/core/range';
-import type { TextModel } from 'vs/editor/common/model/textModel';
-import { TextModelPart } from 'vs/editor/common/model/textModelPart';
-import { computeIndentLevel } from 'vs/editor/common/model/utils';
-import { ILanguageConfigurationService, ResolvedLanguageConfiguration } from 'vs/editor/common/languages/languageConfigurationRegistry';
-import { BracketGuideOptions, HorizontalGuidesState, IActiveIndentGuideInfo, IGuidesTextModelPart, IndentGuide, IndentGuideHorizontalLine } from 'vs/editor/common/textModelGuides';
+import { findLast } from '../../../base/common/arraysFind.js';
+import * as strings from '../../../base/common/strings.js';
+import { CursorColumns } from '../core/cursorColumns.js';
+import { IPosition, Position } from '../core/position.js';
+import { Range } from '../core/range.js';
+import type { TextModel } from './textModel.js';
+import { TextModelPart } from './textModelPart.js';
+import { computeIndentLevel } from './utils.js';
+import { ILanguageConfigurationService, ResolvedLanguageConfiguration } from '../languages/languageConfigurationRegistry.js';
+import { BracketGuideOptions, HorizontalGuidesState, IActiveIndentGuideInfo, IGuidesTextModelPart, IndentGuide, IndentGuideHorizontalLine } from '../textModelGuides.js';
+import { BugIndicatingError } from '../../../base/common/errors.js';
 
 export class GuidesTextModelPart extends TextModelPart implements IGuidesTextModelPart {
 	constructor(
@@ -46,7 +47,7 @@ export class GuidesTextModelPart extends TextModelPart implements IGuidesTextMod
 		const lineCount = this.textModel.getLineCount();
 
 		if (lineNumber < 1 || lineNumber > lineCount) {
-			throw new Error('Illegal value for lineNumber');
+			throw new BugIndicatingError('Illegal value for lineNumber');
 		}
 
 		const foldingRules = this.getLanguageConfiguration(
@@ -292,7 +293,7 @@ export class GuidesTextModelPart extends TextModelPart implements IGuidesTextMod
 					endLineNumber,
 					this.textModel.getLineMaxColumn(endLineNumber)
 				)
-			);
+			).toArray();
 
 		let activeBracketPairRange: Range | undefined = undefined;
 		if (activePosition && bracketPairs.length > 0) {
@@ -303,7 +304,7 @@ export class GuidesTextModelPart extends TextModelPart implements IGuidesTextMod
 					? bracketPairs
 					: this.textModel.bracketPairs.getBracketPairsInRange(
 						Range.fromPositions(activePosition)
-					)
+					).toArray()
 			).filter((bp) => Range.strictContainsPosition(bp.range, activePosition));
 
 			activeBracketPairRange = findLast(
@@ -343,6 +344,10 @@ export class GuidesTextModelPart extends TextModelPart implements IGuidesTextMod
 				----
 			*/
 
+			if (!pair.closingBracketRange) {
+				continue;
+			}
+
 			const isActive = activeBracketPairRange && pair.range.equalsRange(activeBracketPairRange);
 
 			if (!isActive && !options.includeInactive) {
@@ -357,9 +362,7 @@ export class GuidesTextModelPart extends TextModelPart implements IGuidesTextMod
 
 
 			const start = pair.openingBracketRange.getStartPosition();
-			const end =
-				pair.closingBracketRange?.getStartPosition() ??
-				pair.range.getEndPosition();
+			const end = pair.closingBracketRange.getStartPosition();
 
 			const horizontalGuides = options.horizontalGuides === HorizontalGuidesState.Enabled || (options.horizontalGuides === HorizontalGuidesState.EnabledForActive && isActive);
 
@@ -388,16 +391,16 @@ export class GuidesTextModelPart extends TextModelPart implements IGuidesTextMod
 			const guideVisibleColumn = Math.min(startVisibleColumn, endVisibleColumn, pair.minVisibleColumnIndentation + 1);
 
 			let renderHorizontalEndLineAtTheBottom = false;
-			if (pair.closingBracketRange) {
-				const firstNonWsIndex = strings.firstNonWhitespaceIndex(
-					this.textModel.getLineContent(
-						pair.closingBracketRange.startLineNumber
-					)
-				);
-				const hasTextBeforeClosingBracket = firstNonWsIndex < pair.closingBracketRange.startColumn - 1;
-				if (hasTextBeforeClosingBracket) {
-					renderHorizontalEndLineAtTheBottom = true;
-				}
+
+
+			const firstNonWsIndex = strings.firstNonWhitespaceIndex(
+				this.textModel.getLineContent(
+					pair.closingBracketRange.startLineNumber
+				)
+			);
+			const hasTextBeforeClosingBracket = firstNonWsIndex < pair.closingBracketRange.startColumn - 1;
+			if (hasTextBeforeClosingBracket) {
+				renderHorizontalEndLineAtTheBottom = true;
 			}
 
 
@@ -414,7 +417,6 @@ export class GuidesTextModelPart extends TextModelPart implements IGuidesTextMod
 						className,
 						null,
 						l === start.lineNumber ? start.column : -1,
-						// TODO: Investigate if this is correct
 						l === end.lineNumber ? end.column : -1
 					)
 				);
